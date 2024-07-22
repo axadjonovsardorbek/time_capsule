@@ -1,0 +1,307 @@
+version: '3.8'
+
+services:
+  migrate:
+    image: migrate/migrate
+    networks: 
+      - timeline
+    volumes:
+      - ./time_capsule-auth/migrations:/migrations
+    command: [ "-path", "/migrations", "-database", "postgres://postgres:1111@postgres:5432/time_capsule?sslmode=disable", "up" ]
+    depends_on:
+      - postgres-db
+
+  postgres-db:
+    container_name: postgres
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1111
+      PGDATA: /data/postgres
+      POSTGRES_DB: time_capsule
+    volumes:
+     - postgres_data:/data/postgres
+    ports:
+      - "5432:5332"
+    networks:
+      - timeline
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  
+  memory-service:
+    container_name: memory-service
+    build: ./memory-service
+    depends_on:
+      - postgres-db
+    ports:
+      - "50051:50051"
+    networks:
+      - timeline
+
+  timeline-service:
+    container_name: timeline-service
+    build: ./timeline-service
+    depends_on:
+      - postgres-db
+      - memory-service
+      - mongo
+    ports:
+      - "50052:50052"
+    networks:
+      - timeline      
+    
+  api-gateway:
+    container_name: api-gateway
+    build: ./time_capsule-gateway
+    depends_on:
+      - postgres-db
+      - memory-service
+      - timeline-service
+    ports:
+      - "8081:8081"
+    networks:
+      - timeline
+
+  auth-service:
+    container_name: auth-service
+    build: ./time_capsule-auth
+    depends_on: 
+      - postgres-db
+      - memory-service
+      - timeline-service
+      - api-gateway
+      - kafka
+      - redis
+      - zookeeper
+    ports:
+      - "8088:8088"
+    networks:
+      - timeline
+
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.4
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+    networks:
+      - timeline
+ 
+  kafka:
+    image: confluentinc/cp-kafka:7.4.4
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:29092
+    networks:
+      - timeline
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - timeline
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: sardorbek
+      MONGO_INITDB_ROOT_PASSWORD: 1111
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - timeline
+    
+networks:
+  timeline:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data:  
+
+#   version: '3.9'
+
+# services:
+  # zookeeper:
+  #   image: confluentinc/cp-zookeeper:7.4.4
+  #   container_name: zookeeper
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #     ZOOKEEPER_TICK_TIME: 2000
+  #   ports:
+  #     - 22181:2181
+  #   networks:
+  #     - GLhost
+
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.4.4
+  #   container_name: kafka
+  #   depends_on:
+  #     - zookeeper
+  #   ports:
+  #     - 29092:29092
+  #   networks:
+  #     - GLhost
+  #   environment:
+  #     KAFKA_BROKER_ID: 1
+  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+  #     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+#   migrate:
+#     image: migrate/migrate
+#     networks:
+#       - GLhost
+#     volumes:
+#       - ./migrations:/migrations
+#     command: [ "-path", "/migrations", "-database",  
+#                 "postgres://postgres:00salom00@auth:5432/timecapsule_auth?sslmode=disable", 
+#                 "up" ]
+#     depends_on:
+#       - postgres-db
+#       # - zookeeper
+#       # - kafka
+#       # - rabbitmq      
+
+#   postgres-db:
+#     container_name: auth #post
+#     image: postgres:latest
+#     environment:
+#       PGUSER: postgres
+#       POSTGRES_PASSWORD: 00salom00
+#       PGDATA: /data/postgres
+#       POSTGRES_DB: timecapsule_auth 
+#     volumes:
+#       - db:/auth-database/auth-memory
+#     ports:
+#       - "5434:5432"
+#     networks:
+#       - GLhost
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -d postgres"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 5   
+
+#   auth_service:
+#     container_name: auth_service
+#     build: .
+#     depends_on:
+#       - postgres-db
+#       - kafka
+#       - redis
+      
+#     ports:
+#       - "8080:8080"
+#       - "50050:50050"
+#     networks:
+#       - GLhost
+#     # environment:
+#     #   - KAFKA_BROKER=kafka:9092
+
+#   redis:
+#     image: redis:latest
+#     container_name: redis
+#     ports:
+#       - "6379:6379"
+#     networks:
+#       - GLhost
+
+#   mongo:
+#     image: mongo:latest
+#     container_name: mongo
+#     environment:
+#       MONGO_INITDB_ROOT_USERNAME: mongo
+#       MONGO_INITDB_ROOT_PASSWORD: 00salom00
+#       MONGO_INITDB_DATABASE: memory_service
+#     ports:
+#       - "27017:27017"
+#     volumes:
+#       - db:/data/db
+#     networks:
+#       - GLhost        
+
+# # Docker Networks
+# networks:
+#   GLhost:
+#     external: true
+#     name: timecapsule
+#     driver: bridge      
+
+# volumes:
+#   db:
+
+  # zookeeper:
+  #   image: confluentinc/cp-zookeeper:7.4.4
+  #   container_name: zookeeper
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #     ZOOKEEPER_TICK_TIME: 2000
+  #   ports:
+  #     - 22181:2181
+  #   networks:
+  #     - timeline
+
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.4.4
+  #   container_name: kafka
+  #   depends_on:
+  #     - zookeeper
+  #   ports:
+  #     - 29092:29092
+  #   networks:
+  #     - timeline
+  #   environment:
+  #     KAFKA_BROKER_ID: 1
+  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+  #     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  
+  # kafka:
+  #   image: wurstmeister/kafka
+  #   container_name: kafka
+  #   ports:
+  #     - "9092:9092"
+  #   depends_on:
+  #     - zookeeper
+  #   environment:
+  #     KAFKA_ADVERTISED_HOST_NAME: kafka
+  #     KAFKA_ADVERTISED_PORT: 9092
+  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  #   networks:
+  #     - timeline  
+
+    # zookeeper:
+  #   image: wurstmeister/zookeeper
+  #   ports:
+  #     - "2181:2181"
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #   networks:
+  #     - timeline  
