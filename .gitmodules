@@ -1,0 +1,12 @@
+[submodule "time_capsule-auth"]
+	path = time_capsule-auth
+	url = git@github.com:axadjonovsardorbek/time_capsule-auth.git
+[submodule "time_capsule-gateway"]
+	path = time_capsule-gateway
+	url = git@github.com:axadjonovsardorbek/time_capsule-gateway.git
+[submodule "memory-service"]
+	path = memory-service
+	url = git@github.com:axadjonovsardorbek/memory-service.git
+[submodule "timeline-service"]
+	path = timeline-service
+	url = git@github.com:axadjonovsardorbek/timeline-service.git
